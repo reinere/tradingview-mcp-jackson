@@ -1,0 +1,100 @@
+//@version=6
+indicator('SIV Inside Bars', shorttitle='SIVInsBars', overlay=true, max_boxes_count=500, max_bars_back=5000)
+
+tf            = input.timeframe("",    "Timeframe",                          group="Settings",  tooltip="Leave empty to use chart timeframe")
+showBreak     = input.bool(true,       "Show breakout signals",               group="Display")
+drawExtLines  = input.bool(true,       "Draw 150% / 161.8% extension lines",  group="Display")
+drawExtLabels = input.bool(false,      "Show labels on extension lines",       group="Display")
+maxBars       = input.int(500,         "Max bars to display", minval=1, maxval=5000, group="Display")
+
+boxBorderCol  = input.color(color.rgb(0,   154, 255, 40), "Box border",         group="Colors")
+bgUpCol       = input.color(color.rgb(76,  175,  79, 85), "Box bullish",        group="Colors")
+bgDownCol     = input.color(color.rgb(255,  82,  82, 85), "Box bearish",        group="Colors")
+
+[htfH, htfL, htfO, htfC, htfT] = request.security(
+     syminfo.tickerid, tf,
+     [high, low, open, close, time],
+     lookahead=barmerge.lookahead_off)
+
+isNewBar = ta.change(htfT) != 0
+
+var box   curBox      = na
+var float boxH        = na
+var float boxL        = na
+var int   boxStart    = na
+var bool  active      = false
+var color nextBoxColor = bgDownCol
+var line  eT150 = na
+var line  eT161 = na
+var line  eB150 = na
+var line  eB161 = na
+var label lT150 = na
+var label lT161 = na
+var label lB150 = na
+var label lB161 = na
+var bool bullBreakSignal = false
+var bool bearBreakSignal = false
+
+inWindow() =>
+    bar_index >= last_bar_index - maxBars
+
+bullBreakSignal := false
+bearBreakSignal := false
+
+if isNewBar and inWindow()
+    makeNewBox = false
+
+    if not active
+        nextBoxColor := htfC[1] >= htfO[1] ? bgUpCol : bgDownCol
+        makeNewBox := true
+    else if htfC[1] > boxH
+        bullBreakSignal := true
+        nextBoxColor := bgUpCol
+        box.set_right(curBox, int(htfT))
+        makeNewBox := true
+    else if htfC[1] < boxL
+        bearBreakSignal := true
+        nextBoxColor := bgDownCol
+        box.set_right(curBox, int(htfT))
+        makeNewBox := true
+    else
+        if not na(curBox)
+            box.set_right(curBox, int(htfT))
+
+    if makeNewBox
+        boxH     := htfH[1]
+        boxL     := htfL[1]
+        boxStart := int(htfT[1])
+        active   := true
+
+        curBox := box.new(boxStart, boxH, int(htfT), boxL,
+             border_color=boxBorderCol,
+             bgcolor=nextBoxColor,
+             xloc=xloc.bar_time)
+
+        if drawExtLines
+            line.delete(eT150), line.delete(eT161)
+            line.delete(eB150), line.delete(eB161)
+            label.delete(lT150), label.delete(lT161)
+            label.delete(lB150), label.delete(lB161)
+
+            r  = boxH - boxL
+            x1 = boxStart
+            x2 = boxStart + 1
+
+            eT150 := line.new(x1, boxH + r*0.5,   x2, boxH + r*0.5,   color=color.purple, style=line.style_dashed, xloc=xloc.bar_time, extend=extend.right)
+            eT161 := line.new(x1, boxH + r*0.618, x2, boxH + r*0.618, color=color.red,    style=line.style_dashed, xloc=xloc.bar_time, extend=extend.right)
+            eB150 := line.new(x1, boxL - r*0.5,   x2, boxL - r*0.5,   color=color.green,  style=line.style_dashed, xloc=xloc.bar_time, extend=extend.right)
+            eB161 := line.new(x1, boxL - r*0.618, x2, boxL - r*0.618, color=color.teal,   style=line.style_dashed, xloc=xloc.bar_time, extend=extend.right)
+
+            if drawExtLabels
+                lT150 := label.new(x1, boxH + r*0.5,   "R1 150%: "   + str.tostring(boxH + r*0.5,   format.mintick), xloc=xloc.bar_time, color=color.purple, textcolor=color.white, size=size.normal, style=label.style_label_right)
+                lT161 := label.new(x1, boxH + r*0.618, "R2 161.8%: " + str.tostring(boxH + r*0.618, format.mintick), xloc=xloc.bar_time, color=color.red,    textcolor=color.white, size=size.normal, style=label.style_label_right)
+                lB150 := label.new(x1, boxL - r*0.5,   "S1 150%: "   + str.tostring(boxL - r*0.5,   format.mintick), xloc=xloc.bar_time, color=color.green,  textcolor=color.white, size=size.normal, style=label.style_label_right)
+                lB161 := label.new(x1, boxL - r*0.618, "S2 161.8%: " + str.tostring(boxL - r*0.618, format.mintick), xloc=xloc.bar_time, color=color.teal,   textcolor=color.white, size=size.normal, style=label.style_label_right)
+
+if active and not na(curBox)
+    box.set_right(curBox, time)
+
+plotshape(showBreak and bullBreakSignal, title="Bullish Break", color=color.new(color.green, 0), location=location.belowbar, style=shape.triangleup,   size=size.small)
+plotshape(showBreak and bearBreakSignal, title="Bearish Break", color=color.new(color.red,   0), location=location.abovebar, style=shape.triangledown, size=size.small)

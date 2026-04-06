@@ -1,0 +1,76 @@
+{
+  "watchlist": [
+    "EUREX:FDAX1!",
+    "CME_MINI:ES1!",
+    "CME_MINI:NQ1!",
+    "CBOT_MINI:YM1!",
+    "CME_MINI:RTY1!",
+    "BITSTAMP:BTCUSD"
+  ],
+
+  "default_timeframe": "60",
+
+  "sessions": {
+    "europe_open": "08:00-09:00 CET",
+    "us_premarket": "14:30-15:30 CET",
+    "us_open": "15:30-16:30 CET",
+    "us_close": "21:00-22:00 CET",
+    "note": "FDAX most active during Europe open; ES/NQ/YM/RTY most active during US open"
+  },
+
+  "indicators": {
+    "intraday": ["EMA 8", "EMA 21", "SMA 20 (1H close)"],
+    "daily": ["EMA 8", "EMA 21", "EMA 50", "EMA 100", "EMA 200", "SMA 20 (Daily close)"],
+    "weekly": ["SMA 50W", "SMA 200W"],
+    "monthly": ["SMA 50M", "SMA 200M"],
+    "note": "Multi-timeframe MA stack — intraday bias aligned with daily/weekly/monthly structure"
+  },
+
+  "bias_criteria": {
+    "bullish": [
+      "Price is above SMA20H and EMA21 on the current intraday timeframe",
+      "EMA8 > EMA21 on the intraday timeframe (bull cross or bullish stack)",
+      "Price is above SMA20D on the daily chart",
+      "Daily EMA stack is bullish: EMA8 > EMA21 > EMA50",
+      "Price is above SMA50W (macro bull trend intact)",
+      "SMA50W is above SMA200W (long-term uptrend)"
+    ],
+    "bearish": [
+      "Price is below SMA20H and EMA21 on the current intraday timeframe",
+      "EMA8 < EMA21 on the intraday timeframe (bear cross or bearish stack)",
+      "Price is below SMA20D on the daily chart",
+      "Daily EMA stack is bearish: EMA8 < EMA21 < EMA50",
+      "Price is below SMA50W (macro bear trend)",
+      "SMA50W is below SMA200W (long-term downtrend)"
+    ],
+    "neutral": [
+      "Price is oscillating around SMA20H or EMA21 — no clear bias",
+      "EMA8 and EMA21 are flat or crossing repeatedly",
+      "Price is between SMA20D and EMA50D — compression zone",
+      "Conflicting signals across timeframes (e.g. bullish intraday, bearish daily)"
+    ]
+  },
+
+  "risk_rules": [
+    "Define max risk per trade before entry — stick to it",
+    "No revenge trading after a stop-out — wait for the next valid setup",
+    "No new entries in the last 30 minutes before market close",
+    "If daily drawdown exceeds 2x normal stop size, stop trading for the day",
+    "Always check correlation: ES/NQ/YM/RTY tend to move together — avoid stacking correlated longs or shorts",
+    "FDAX follows ES/NQ directionally but has its own open — treat separately",
+    "BTC positions should not influence futures bias and vice versa"
+  ],
+
+  "instrument_notes": {
+    "FDAX": "DAX Futures (Eurex) — highest liquidity 08:00-17:30 CET. Tick size 0.5 points.",
+    "ES": "S&P 500 E-mini (CME) — most liquid US index future. Tick size 0.25 points.",
+    "NQ": "Nasdaq 100 E-mini (CME) — high beta, amplified moves vs ES. Tick size 0.25 points.",
+    "YM": "Dow E-mini (CBOT) — fewer components, can diverge from ES/NQ. Tick size 1 point.",
+    "RTY": "Russell 2000 E-mini (CME) — small caps, risk-on/off indicator. Tick size 0.1 points.",
+    "BTC": "Bitcoin — 24/7, treat Asia session separately from US session."
+  },
+
+  "us_equities_note": "Add individual US stocks to your watchlist as needed, e.g. NASDAQ:AAPL, NYSE:NVDA",
+
+  "notes": "Update this section with macro events, FOMC dates, earnings weeks, or any context that should affect daily bias. Example: 'FOMC this Wednesday — reduce size, expect volatility spikes.'"
+}
