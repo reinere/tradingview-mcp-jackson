@@ -2,6 +2,7 @@
 indicator('SIV Inside Bars', shorttitle='SIVInsBars', overlay=true, max_boxes_count=500, max_bars_back=5000)
 
 tf            = input.timeframe("",    "Timeframe",                          group="Settings",  tooltip="Leave empty to use chart timeframe")
+squeezeN      = input.int(3,           "Squeeze threshold (consecutive breaks)", minval=2, maxval=10, group="Settings", tooltip="How many consecutive breaks in the same direction to trigger a squeeze signal")
 showBreak     = input.bool(true,       "Show breakout signals",               group="Display")
 drawExtLines  = input.bool(true,       "Draw 150% / 161.8% extension lines",  group="Display")
 drawExtLabels = input.bool(false,      "Show labels on extension lines",       group="Display")
@@ -34,6 +35,8 @@ var label lB150 = na
 var label lB161 = na
 var bool bullBreakSignal = false
 var bool bearBreakSignal = false
+var int  bullStreak = 0
+var int  bearStreak = 0
 
 inWindow() =>
     bar_index >= last_bar_index - maxBars
@@ -96,5 +99,31 @@ if isNewBar and inWindow()
 if active and not na(curBox)
     box.set_right(curBox, time)
 
-plotshape(showBreak and bullBreakSignal, title="Bullish Break", color=color.new(color.green, 0), location=location.belowbar, style=shape.triangleup,   size=size.small)
-plotshape(showBreak and bearBreakSignal, title="Bearish Break", color=color.new(color.red,   0), location=location.abovebar, style=shape.triangledown, size=size.small)
+// --- Streak tracking ---
+if isNewBar
+    if bullBreakSignal
+        bullStreak += 1
+        bearStreak := 0
+    else if bearBreakSignal
+        bearStreak += 1
+        bullStreak := 0
+    else
+        bullStreak := 0
+        bearStreak := 0
+
+inBullSqueeze    = bullStreak >= squeezeN
+inBearSqueeze    = bearStreak >= squeezeN
+bullSqueezeStart = bullBreakSignal and bullStreak == squeezeN
+bearSqueezeStart = bearBreakSignal and bearStreak == squeezeN
+
+// --- Visuals ---
+plotshape(showBreak and bullBreakSignal and not inBullSqueeze, title="Bull Break (Trend)",   color=color.new(color.green,  0), location=location.belowbar, style=shape.triangleup,   size=size.small)
+plotshape(showBreak and bearBreakSignal and not inBearSqueeze, title="Bear Break (Trend)",   color=color.new(color.red,    0), location=location.abovebar, style=shape.triangledown, size=size.small)
+plotshape(showBreak and bullSqueezeStart, title="Bull Squeeze", color=color.new(color.lime,   0), location=location.belowbar, style=shape.diamond, size=size.normal)
+plotshape(showBreak and bearSqueezeStart, title="Bear Squeeze", color=color.new(color.orange, 0), location=location.abovebar, style=shape.diamond, size=size.normal)
+
+// --- Alert conditions ---
+alertcondition(bullBreakSignal and not inBullSqueeze, title="Trend: Bull Break",  message="SIV Inside Bars — Bull Break (Trend)")
+alertcondition(bearBreakSignal and not inBearSqueeze, title="Trend: Bear Break",  message="SIV Inside Bars — Bear Break (Trend)")
+alertcondition(bullSqueezeStart,                      title="Squeeze: Bull",      message="SIV Inside Bars — Bull Squeeze ({{ticker}} {{interval}})")
+alertcondition(bearSqueezeStart,                      title="Squeeze: Bear",      message="SIV Inside Bars — Bear Squeeze ({{ticker}} {{interval}})")
