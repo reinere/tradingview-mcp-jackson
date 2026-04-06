@@ -2,7 +2,8 @@
  * Core tab management logic.
  * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
  */
-import { getClient, evaluate } from '../connection.js';
+import { getClient, reconnectToTarget } from '../connection.js';
+import { layoutList } from './ui.js';
 
 const CDP_HOST = 'localhost';
 const CDP_PORT = 9222;
@@ -83,6 +84,64 @@ export async function closeTab() {
 }
 
 /**
+ * Build a map of { chart_id → layout_name } from TradingView's saved charts API.
+ * chart_id is the alphanumeric URL fragment (e.g. "bIYGw8zx").
+ * Delegates to layoutList() from ui.js which already handles getSavedCharts correctly.
+ */
+async function getLayoutChartIdMap() {
+  try {
+    const result = await layoutList();
+    const map = {};
+    for (const l of (result.layouts || [])) {
+      if (l.short_url) map[l.short_url] = l.name;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * List tabs with layout names resolved.
+ */
+export async function listWithNames() {
+  const tabsData = await list();
+  const layoutMap = await getLayoutChartIdMap();
+  const tabs = tabsData.tabs.map(t => ({
+    ...t,
+    layout_name: layoutMap[t.chart_id] || null,
+  }));
+  return { success: true, tab_count: tabs.length, tabs };
+}
+
+/**
+ * Switch to a tab by layout name. Finds the open tab whose chart_id
+ * matches the saved layout, then delegates to switchTab.
+ */
+export async function switchByName({ name }) {
+  const tabsData = await list();
+  const layoutMap = await getLayoutChartIdMap();
+
+  // Reverse map: layout_name → chart_id
+  const nameLower = name.toLowerCase();
+  const match = tabsData.tabs.find(t => {
+    const layoutName = layoutMap[t.chart_id] || '';
+    return layoutName === name || layoutName.toLowerCase() === nameLower;
+  });
+
+  if (match) {
+    return await switchTab({ index: match.index });
+  }
+
+  // Fallback: list known layouts to give a helpful error
+  const knownLayouts = [...new Set(Object.values(layoutMap))].sort();
+  throw new Error(
+    `No open tab found with layout "${name}". ` +
+    `Open tabs have layouts: ${knownLayouts.length ? knownLayouts.join(', ') : '(none resolved)'}`
+  );
+}
+
+/**
  * Switch to a tab by index. Reconnects CDP to the new target.
  */
 export async function switchTab({ index }) {
@@ -95,11 +154,14 @@ export async function switchTab({ index }) {
 
   const target = tabs.tabs[idx];
 
-  // Use CDP Target.activateTarget to bring the tab to front
+  // Use CDP Target.activateTarget to bring the tab to front, then reconnect JS context
   try {
-    const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${target.id}`);
-    const text = await resp.text();
-    return { success: true, action: 'switched', index: idx, tab_id: target.id, chart_id: target.chart_id };
+    await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${target.id}`);
+    await new Promise(r => setTimeout(r, 300));
+    await reconnectToTarget(target.id);
+    const layoutMap = await getLayoutChartIdMap();
+    const layoutName = layoutMap[target.chart_id] || null;
+    return { success: true, action: 'switched', index: idx, tab_id: target.id, chart_id: target.chart_id, layout_name: layoutName };
   } catch (e) {
     throw new Error(`Failed to activate tab ${idx}: ${e.message}`);
   }
