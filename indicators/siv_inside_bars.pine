@@ -116,11 +116,11 @@ inBearSqueeze    = bearStreak >= squeezeN
 bullSqueezeStart = bullBreakSignal and bullStreak == squeezeN
 bearSqueezeStart = bearBreakSignal and bearStreak == squeezeN
 
-// --- Visuals ---
-plotshape(showBreak and bullBreakSignal and not inBullSqueeze, title="Bull Break (Trend)",   color=color.new(color.green,  0), location=location.belowbar, style=shape.triangleup,   size=size.small)
-plotshape(showBreak and bearBreakSignal and not inBearSqueeze, title="Bear Break (Trend)",   color=color.new(color.red,    0), location=location.abovebar, style=shape.triangledown, size=size.small)
-plotshape(showBreak and bullSqueezeStart, title="Bull Squeeze", color=color.new(color.lime,   0), location=location.belowbar, style=shape.diamond, size=size.normal)
-plotshape(showBreak and bearSqueezeStart, title="Bear Squeeze", color=color.new(color.orange, 0), location=location.abovebar, style=shape.diamond, size=size.normal)
+// --- Visuals (offset=-1 places signal on the breakout bar, confirmed non-repainting) ---
+plotshape(showBreak and bullBreakSignal and not inBullSqueeze, title="Bull Break (Trend)",   color=color.new(color.green,  0), location=location.belowbar, style=shape.triangleup,   size=size.small,  offset=-1)
+plotshape(showBreak and bearBreakSignal and not inBearSqueeze, title="Bear Break (Trend)",   color=color.new(color.red,    0), location=location.abovebar, style=shape.triangledown, size=size.small,  offset=-1)
+plotshape(showBreak and bullSqueezeStart, title="Bull Squeeze", color=color.new(color.lime,   0), location=location.belowbar, style=shape.diamond, size=size.normal, offset=-1)
+plotshape(showBreak and bearSqueezeStart, title="Bear Squeeze", color=color.new(color.orange, 0), location=location.abovebar, style=shape.diamond, size=size.normal, offset=-1)
 
 // --- Alert conditions ---
 alertcondition(bullBreakSignal and not inBullSqueeze, title="Trend: Bull Break",  message="SIV Inside Bars — Bull Break (Trend)")
