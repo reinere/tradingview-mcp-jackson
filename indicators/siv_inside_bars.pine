@@ -122,8 +122,16 @@ plotshape(showBreak and bearBreakSignal and not inBearSqueeze, title="Bear Break
 plotshape(showBreak and bullSqueezeStart, title="Bull Squeeze", color=color.new(color.lime,   0), location=location.belowbar, style=shape.diamond, size=size.normal, offset=-1)
 plotshape(showBreak and bearSqueezeStart, title="Bear Squeeze", color=color.new(color.orange, 0), location=location.abovebar, style=shape.diamond, size=size.normal, offset=-1)
 
-// --- Alert conditions ---
+// --- Alert conditions (specific, one setup per type) ---
 alertcondition(bullBreakSignal and not inBullSqueeze, title="Trend: Bull Break",  message="SIV Inside Bars — Bull Break (Trend)")
 alertcondition(bearBreakSignal and not inBearSqueeze, title="Trend: Bear Break",  message="SIV Inside Bars — Bear Break (Trend)")
 alertcondition(bullSqueezeStart,                      title="Squeeze: Bull",      message="SIV Inside Bars — Bull Squeeze ({{ticker}} {{interval}})")
 alertcondition(bearSqueezeStart,                      title="Squeeze: Bear",      message="SIV Inside Bars — Bear Squeeze ({{ticker}} {{interval}})")
+
+// --- Generic dynamic alert (one setup: "Any alert() function call") ---
+_ctx = bullSqueezeStart              ? "Bull Squeeze"       :
+       bearSqueezeStart              ? "Bear Squeeze"       :
+       bullBreakSignal               ? "Bull Break (Trend)" :
+       bearBreakSignal               ? "Bear Break (Trend)" : ""
+if _ctx != ""
+    alert("SIV | " + _ctx + " | " + syminfo.ticker + " " + timeframe.period + "min", alert.freq_once_per_bar_close)
