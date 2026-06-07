@@ -3,6 +3,8 @@
 # Usage: ./scripts/launch_tv_debug_mac.sh [port]
 
 PORT="${1:-9222}"
+LOG_FILE="$HOME/.tradingview-mcp/tv.out"
+mkdir -p "$(dirname "$LOG_FILE")"
 
 # Auto-detect TradingView install location
 APP=""
@@ -48,10 +50,10 @@ pkill -f "TradingView" 2>/dev/null
 sleep 1
 
 echo "Found TradingView at: $APP"
-echo "Launching with --remote-debugging-port=$PORT ..."
-"$APP" --remote-debugging-port=$PORT &
+echo "Launching with --remote-debugging-port=$PORT (output → $LOG_FILE) ..."
+"$APP" --remote-debugging-port=$PORT >"$LOG_FILE" 2>&1 &
 TV_PID=$!
-echo "PID: $TV_PID"
+echo "PID: $TV_PID  |  tail -f $LOG_FILE"
 
 # Wait for CDP to be ready
 echo "Waiting for CDP..."
