@@ -5,7 +5,12 @@
     "CME_MINI:NQ1!",
     "CBOT_MINI:YM1!",
     "CME_MINI:RTY1!",
-    "BITSTAMP:BTCUSD"
+    "BITSTAMP:BTCUSD",
+    "CAPITALCOM:UKOIL",
+    "TVC:US10Y",
+    "CAPITALCOM:XAUUSD",
+    "TVC:SILVER",
+    "NASDAQ:NVDA"
   ],
 
   "default_timeframe": "60",

@@ -1,6 +1,63 @@
-# TradingView MCP — Claude Instructions
+# CLAUDE.md
 
-68 tools for reading and controlling a live TradingView Desktop chart via CDP (port 9222).
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```bash
+npm install                        # install dependencies
+
+npm start                          # run MCP server (stdio transport — used by Claude Code)
+npm test                           # e2e + unit tests
+npm run test:unit                  # unit tests only (no live TradingView needed)
+npm run test:e2e                   # requires TradingView running on port 9222
+
+npm link                           # install `tv` CLI globally (one-time)
+tv brief                           # run morning brief from terminal
+tv --help                          # full CLI command list
+
+# Pine Script file-based workflow
+node scripts/pine_pull.js          # pull active script from TradingView → scripts/current.pine
+node scripts/pine_push.js          # push scripts/current.pine → TradingView, compile, report errors
+
+# Launch TradingView with CDP debug port (required before any tool call)
+./scripts/launch_tv_debug_mac.sh
+scripts\launch_tv_debug.bat        # Windows
+./scripts/launch_tv_debug_linux.sh
+```
+
+## Architecture
+
+```
+Claude Code  ←→  MCP Server (stdio)  ←→  CDP localhost:9222  ←→  TradingView Desktop (Electron)
+```
+
+Three layers mirror each domain (chart, data, pine, replay, morning, etc.):
+
+- **`src/tools/`** — MCP tool definitions. Each `register*Tools(server)` call wires tool name + schema to the server. Thin layer; delegates immediately to `src/core/`.
+- **`src/core/`** — Business logic. All actual CDP calls live here.
+- **`src/cli/commands/`** — CLI wrappers that call the same `src/core/` functions; output is pipe-friendly JSON.
+- **`src/connection.js`** — CDP singleton. All core modules call `evaluate()` / `evaluateAsync()` to execute JS inside TradingView's Electron page. `KNOWN_PATHS` holds the hardcoded TradingView internal API paths discovered by live probing.
+- **`src/server.js`** — Entrypoint: creates `McpServer`, calls every `register*Tools()`, starts stdio transport.
+
+### Adding a new tool
+
+1. Add logic to the matching `src/core/<domain>.js` (or create a new one).
+2. Add an MCP tool definition to `src/tools/<domain>.js` — call your core function in the handler.
+3. If adding a new domain file, create `src/cli/commands/<domain>.js` and import it in `src/cli/router.js`.
+4. Register the tool group in `src/server.js`.
+
+### Runtime config
+
+- **`rules.json`** — watchlist, bias criteria, risk rules read by `morning_brief`. Lookup order: explicit arg → `<project_root>/rules.json` → `~/.tradingview-mcp/rules.json`. Copy from `rules.example.json` to get started.
+- **Session storage** — `session_save`/`session_get` read/write `~/.tradingview-mcp/sessions/YYYY-MM-DD.json`.
+- **MCP config** — add server to `~/.claude/.mcp.json` pointing at `src/server.js`.
+
+---
+
+# TradingView MCP — Tool Reference
+
+81 tools for reading and controlling a live TradingView Desktop chart via CDP (port 9222).
 
 ## Decision Tree — Which Tool When
 

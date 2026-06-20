@@ -90,6 +90,7 @@ export async function evaluate(expression, opts = {}) {
     expression,
     returnByValue: true,
     awaitPromise: opts.awaitPromise ?? false,
+    timeout: 15000,
     ...opts,
   });
   if (result.exceptionDetails) {

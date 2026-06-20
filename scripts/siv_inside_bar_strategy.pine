@@ -1,0 +1,214 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// © SIV
+
+//@version=6
+strategy("SIV Inside Bar Strategy", overlay=true,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=10,
+     commission_type=strategy.commission.percent, commission_value=0.05, slippage=1)
+
+// ─── INPUTS ──────────────────────────────────────────────────────────────────
+
+showBreak     = input.bool(true,  "Show breakout signals",         group="Display")
+drawExtLines  = input.bool(true,  "Draw TP extension lines",       group="Display")
+drawExtLabels = input.bool(false, "Show labels on extension lines", group="Display")
+maxBars       = input.int(5000,   "Max bars to display", minval=100, maxval=20000, group="Display")
+
+boxBorderCol = input.color(color.rgb(0,   154, 255, 40), "Box border",  group="Colors")
+bgUpCol      = input.color(color.rgb(76,  175,  79, 85), "Box bullish", group="Colors")
+bgDownCol    = input.color(color.rgb(255,  82,  82, 85), "Box bearish", group="Colors")
+
+// Filters
+useEmaFilter     = input.bool(true,  "EMA Trend Filter",             group="Filters", tooltip="Longs above EMA only, shorts below EMA only")
+emaLength        = input.int(50,     "EMA Length", minval=1,          group="Filters")
+useDirFilter     = input.bool(true,  "Box Direction Filter",         group="Filters", tooltip="Only trade breakouts that continue the box direction (bull box => long, bear box => short)")
+useAdxFilter     = input.bool(true,  "ADX Trend Strength Filter",    group="Filters")
+adxLen           = input.int(14,     "ADX Length", minval=1,          group="Filters")
+adxMin           = input.int(20,     "Min ADX value", minval=5, maxval=60, group="Filters")
+useBreakStrength = input.bool(true,  "Breakout Bar Strength Filter", group="Filters", tooltip="Bull break: close in top 40% of bar range | Bear break: close in bottom 40%")
+minBoxMult       = input.float(0.3,  "Min Box Size (x ATR14)", minval=0.0, step=0.05, group="Filters", tooltip="Skip boxes smaller than this ATR multiple to avoid noise")
+
+// Strategy
+tradeDir = input.string("Both", "Trade Direction",
+     options=["Both", "Long Only", "Short Only"], group="Strategy")
+tpMode   = input.string("2:1",  "Take Profit Mode",
+     options=["1:1", "2:1", "Scale (50% at 1:1, 50% at 2:1)"], group="Strategy",
+     tooltip="R:R multiples of box range. 1:1 needs >50% win rate, 2:1 needs >33%")
+
+// ─── INDICATORS ──────────────────────────────────────────────────────────────
+
+emaLine                   = ta.ema(close, emaLength)
+atr14                     = ta.atr(14)
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+
+plot(emaLine, "EMA Trend", color=color.orange, linewidth=1)
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+
+var box   curBox       = na
+var float boxH         = na
+var float boxL         = na
+var int   boxStart     = na
+var bool  active       = false
+var color nextBoxColor = bgDownCol
+
+var line  eT1 = na
+var line  eT2 = na
+var line  eB1 = na
+var line  eB2 = na
+var label lT1 = na
+var label lT2 = na
+var label lB1 = na
+var label lB2 = na
+
+var bool bullBreak = false
+var bool bearBreak = false
+
+var float sigBoxH    = na
+var float sigBoxL    = na
+var bool  sigBoxBull = true
+
+var float eLongSL   = na
+var float eLongTP1  = na
+var float eLongTP2  = na
+var float eShortSL  = na
+var float eShortTP1 = na
+var float eShortTP2 = na
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+isNewBar = ta.change(time) != 0
+inWindow() => bar_index >= last_bar_index - maxBars
+
+bullBreak := false
+bearBreak := false
+
+// ─── BOX LOGIC — original behaviour ──────────────────────────────────────────
+// Every new bar: if no box, start one from bar[1]'s H/L.
+// Extend box right while bar[1] stays inside. Fire signal on breakout.
+// New box starts from the breakout bar's H/L.
+
+if isNewBar and inWindow()
+    makeNewBox = false
+
+    if not active
+        nextBoxColor := close[1] >= open[1] ? bgUpCol : bgDownCol
+        makeNewBox   := true
+
+    else if close[1] > boxH
+        bullBreak    := true
+        sigBoxH      := boxH
+        sigBoxL      := boxL
+        sigBoxBull   := nextBoxColor == bgUpCol
+        nextBoxColor := bgUpCol
+        box.set_right(curBox, int(time))
+        makeNewBox   := true
+
+    else if close[1] < boxL
+        bearBreak    := true
+        sigBoxH      := boxH
+        sigBoxL      := boxL
+        sigBoxBull   := nextBoxColor == bgUpCol
+        nextBoxColor := bgDownCol
+        box.set_right(curBox, int(time))
+        makeNewBox   := true
+
+    else
+        if not na(curBox)
+            box.set_right(curBox, int(time))
+
+    if makeNewBox
+        boxH     := high[1]
+        boxL     := low[1]
+        boxStart := int(time[1])
+        active   := true
+
+        curBox := box.new(boxStart, boxH, int(time), boxL,
+             border_color = boxBorderCol,
+             bgcolor      = nextBoxColor,
+             xloc         = xloc.bar_time)
+
+        if drawExtLines
+            line.delete(eT1)
+            line.delete(eT2)
+            line.delete(eB1)
+            line.delete(eB2)
+            label.delete(lT1)
+            label.delete(lT2)
+            label.delete(lB1)
+            label.delete(lB2)
+
+            r  = boxH - boxL
+            x1 = boxStart
+            x2 = x1 + 1
+
+            eT1 := line.new(x1, boxH + r,   x2, boxH + r,   color=color.purple, style=line.style_dashed, xloc=xloc.bar_time, extend=extend.right)
+            eT2 := line.new(x1, boxH + r*2, x2, boxH + r*2, color=color.red,    style=line.style_dashed, xloc=xloc.bar_time, extend=extend.right)
+            eB1 := line.new(x1, boxL - r,   x2, boxL - r,   color=color.green,  style=line.style_dashed, xloc=xloc.bar_time, extend=extend.right)
+            eB2 := line.new(x1, boxL - r*2, x2, boxL - r*2, color=color.teal,   style=line.style_dashed, xloc=xloc.bar_time, extend=extend.right)
+
+            if drawExtLabels
+                lT1 := label.new(x1, boxH + r,   "TP1 1:1 " + str.tostring(boxH + r,   format.mintick), xloc=xloc.bar_time, color=color.purple, textcolor=color.white, size=size.normal, style=label.style_label_right)
+                lT2 := label.new(x1, boxH + r*2, "TP2 2:1 " + str.tostring(boxH + r*2, format.mintick), xloc=xloc.bar_time, color=color.red,    textcolor=color.white, size=size.normal, style=label.style_label_right)
+                lB1 := label.new(x1, boxL - r,   "TP1 1:1 " + str.tostring(boxL - r,   format.mintick), xloc=xloc.bar_time, color=color.green,  textcolor=color.white, size=size.normal, style=label.style_label_right)
+                lB2 := label.new(x1, boxL - r*2, "TP2 2:1 " + str.tostring(boxL - r*2, format.mintick), xloc=xloc.bar_time, color=color.teal,   textcolor=color.white, size=size.normal, style=label.style_label_right)
+
+if active and not na(curBox)
+    box.set_right(curBox, time)
+
+// ─── FILTERS ──────────────────────────────────────────────────────────────────
+
+boxSizeOk  = (sigBoxH - sigBoxL) >= atr14 * minBoxMult
+trendLong  = not useEmaFilter or close > emaLine
+trendShort = not useEmaFilter or close < emaLine
+dirLong    = not useDirFilter or sigBoxBull
+dirShort   = not useDirFilter or not sigBoxBull
+adxOk      = not useAdxFilter or adxVal >= adxMin
+
+bbRange     = high[1] - low[1]
+bbStrength  = bbRange > 0 ? (close[1] - low[1]) / bbRange : 0.5
+breakBullOk = not useBreakStrength or bbStrength >= 0.6
+breakBearOk = not useBreakStrength or bbStrength <= 0.4
+
+longEnabled  = tradeDir == "Both" or tradeDir == "Long Only"
+shortEnabled = tradeDir == "Both" or tradeDir == "Short Only"
+
+// ─── STRATEGY ENTRIES ─────────────────────────────────────────────────────────
+
+r_sig = sigBoxH - sigBoxL
+
+if bullBreak and boxSizeOk and longEnabled and trendLong and dirLong and adxOk and breakBullOk and strategy.position_size == 0
+    eLongSL  := sigBoxL
+    eLongTP1 := sigBoxH + r_sig
+    eLongTP2 := sigBoxH + r_sig * 2
+    strategy.entry("Long", strategy.long, comment="IB Long")
+
+if bearBreak and boxSizeOk and shortEnabled and trendShort and dirShort and adxOk and breakBearOk and strategy.position_size == 0
+    eShortSL  := sigBoxH
+    eShortTP1 := sigBoxL - r_sig
+    eShortTP2 := sigBoxL - r_sig * 2
+    strategy.entry("Short", strategy.short, comment="IB Short")
+
+// ─── STRATEGY EXITS ───────────────────────────────────────────────────────────
+
+if strategy.position_size > 0 and not na(eLongSL)
+    if tpMode == "1:1"
+        strategy.exit("Long TP/SL",  from_entry="Long", limit=eLongTP1, stop=eLongSL, comment_profit="TP 1:1",  comment_loss="SL")
+    else if tpMode == "2:1"
+        strategy.exit("Long TP/SL",  from_entry="Long", limit=eLongTP2, stop=eLongSL, comment_profit="TP 2:1",  comment_loss="SL")
+    else
+        strategy.exit("Long TP1",    from_entry="Long", qty_percent=50, limit=eLongTP1, stop=eLongSL, comment_profit="TP1 1:1",  comment_loss="SL")
+        strategy.exit("Long TP2",    from_entry="Long", qty_percent=50, limit=eLongTP2, stop=eLongSL, comment_profit="TP2 2:1",  comment_loss="SL")
+
+if strategy.position_size < 0 and not na(eShortSL)
+    if tpMode == "1:1"
+        strategy.exit("Short TP/SL", from_entry="Short", limit=eShortTP1, stop=eShortSL, comment_profit="TP 1:1", comment_loss="SL")
+    else if tpMode == "2:1"
+        strategy.exit("Short TP/SL", from_entry="Short", limit=eShortTP2, stop=eShortSL, comment_profit="TP 2:1", comment_loss="SL")
+    else
+        strategy.exit("Short TP1",   from_entry="Short", qty_percent=50, limit=eShortTP1, stop=eShortSL, comment_profit="TP1 1:1", comment_loss="SL")
+        strategy.exit("Short TP2",   from_entry="Short", qty_percent=50, limit=eShortTP2, stop=eShortSL, comment_profit="TP2 2:1", comment_loss="SL")
+
+// ─── VISUALS ──────────────────────────────────────────────────────────────────
+
+plotshape(showBreak and bullBreak and boxSizeOk and longEnabled  and trendLong  and dirLong  and adxOk and breakBullOk, title="Bull Break", color=color.new(color.green, 0), location=location.belowbar, style=shape.triangleup,   size=size.small, offset=-1)
+plotshape(showBreak and bearBreak and boxSizeOk and shortEnabled and trendShort and dirShort and adxOk and breakBearOk, title="Bear Break", color=color.new(color.red,   0), location=location.abovebar, style=shape.triangledown, size=size.small, offset=-1)

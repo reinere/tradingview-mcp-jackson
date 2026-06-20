@@ -64,9 +64,9 @@ export async function runBrief({ rules_path } = {}) {
   for (const symbol of watchlist) {
     try {
       await chart.setSymbol({ symbol });
-      await new Promise((r) => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 300));
       await chart.setTimeframe({ timeframe: default_timeframe });
-      await new Promise((r) => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 300));
 
       const [state, indicators, quote] = await Promise.all([
         chart.getState(),
