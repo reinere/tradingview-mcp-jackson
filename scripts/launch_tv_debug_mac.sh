@@ -1,12 +1,21 @@
 #!/bin/bash
-# Launch TradingView Desktop on macOS with Chrome DevTools Protocol enabled
+# Launch TradingView Desktop on macOS with Chrome DevTools Protocol enabled.
 # Usage: ./scripts/launch_tv_debug_mac.sh [port]
 
 PORT="${1:-9222}"
 LOG_FILE="$HOME/.tradingview-mcp/tv.out"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# Auto-detect TradingView install location
+# ── Idempotency: if CDP already answers on this port, do nothing ──
+if curl -s "http://127.0.0.1:$PORT/json/version" > /dev/null 2>&1; then
+  echo "TradingView already running with CDP on port $PORT — nothing to do."
+  curl -s "http://127.0.0.1:$PORT/json/version" \
+    | python3 -m json.tool 2>/dev/null \
+    || curl -s "http://127.0.0.1:$PORT/json/version"
+  exit 0
+fi
+
+# ── Auto-detect TradingView install location ──
 APP=""
 LOCATIONS=(
   "/Applications/TradingView.app/Contents/MacOS/TradingView"
@@ -20,20 +29,16 @@ for loc in "${LOCATIONS[@]}"; do
   fi
 done
 
-# Fallback: search with mdfind (Spotlight)
+# Fallback: Spotlight
 if [ -z "$APP" ]; then
   APP=$(mdfind "kMDItemCFBundleIdentifier == 'com.niceincontact.TradingView'" 2>/dev/null | head -1)
-  if [ -n "$APP" ]; then
-    APP="$APP/Contents/MacOS/TradingView"
-  fi
+  [ -n "$APP" ] && APP="$APP/Contents/MacOS/TradingView"
 fi
 
-# Fallback: find any TradingView.app
+# Fallback: find
 if [ -z "$APP" ] || [ ! -f "$APP" ]; then
   APP=$(find /Applications "$HOME/Applications" -name "TradingView.app" -maxdepth 2 2>/dev/null | head -1)
-  if [ -n "$APP" ]; then
-    APP="$APP/Contents/MacOS/TradingView"
-  fi
+  [ -n "$APP" ] && APP="$APP/Contents/MacOS/TradingView"
 fi
 
 if [ -z "$APP" ] || [ ! -f "$APP" ]; then
@@ -45,7 +50,7 @@ if [ -z "$APP" ] || [ ! -f "$APP" ]; then
   exit 1
 fi
 
-# Kill any existing TradingView
+# Kill any existing TradingView (only reached if CDP wasn't answering)
 pkill -f "TradingView" 2>/dev/null
 sleep 1
 
@@ -55,16 +60,18 @@ echo "Launching with --remote-debugging-port=$PORT (output → $LOG_FILE) ..."
 TV_PID=$!
 echo "PID: $TV_PID  |  tail -f $LOG_FILE"
 
-# Wait for CDP to be ready
+# Wait for CDP
 echo "Waiting for CDP..."
 for i in $(seq 1 15); do
-  if curl -s "http://localhost:$PORT/json/version" > /dev/null 2>&1; then
-    echo "CDP ready at http://localhost:$PORT"
-    curl -s "http://localhost:$PORT/json/version" | python3 -m json.tool 2>/dev/null || curl -s "http://localhost:$PORT/json/version"
+  if curl -s "http://127.0.0.1:$PORT/json/version" > /dev/null 2>&1; then
+    echo "CDP ready at http://127.0.0.1:$PORT"
+    curl -s "http://127.0.0.1:$PORT/json/version" \
+      | python3 -m json.tool 2>/dev/null \
+      || curl -s "http://127.0.0.1:$PORT/json/version"
     exit 0
   fi
   sleep 1
 done
 
 echo "Warning: CDP not responding after 15s. TradingView may still be loading."
-echo "Check manually: curl http://localhost:$PORT/json/version"
+echo "Check manually: curl http://127.0.0.1:$PORT/json/version"
